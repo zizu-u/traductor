@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Kotoba — traductor de viaje</title>
+<style>
+  :root{
+    --white:#FFFFFF;
+    --ink:#111111;
+    --blue:#1B4C9C;
+    --red:#C8102E;
+    --line:#111111;
+    --line-soft:#D8D8D8;
+    --bg-soft:#F7F8FA;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--white);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+  }
+
+  .offline-banner{
+    display:none;
+    background:var(--red);
+    color:#fff;
+    text-align:center;
+    font-size:12.5px;
+    font-weight:600;
+    padding:7px 10px;
+  }
+  .offline-banner.show{display:block;}
+
+  header{
+    padding:22px 20px 14px;
+    border-bottom:2px solid var(--ink);
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .brand .kanji{
+    font-size:28px;
+    font-weight:700;
+    color:var(--blue);
+    letter-spacing:1px;
+  }
+  .brand .name{
+    font-size:15px;
+    color:var(--ink);
+    letter-spacing:.3px;
+    font-weight:600;
+  }
+  .brand .flag{
+    font-size:16px;
+  }
+  .sub{
+    margin-top:4px;
+    font-size:13px;
+    color:#444;
+  }
+
+  nav{
+    display:flex;
+    border-bottom:2px solid var(--ink);
+    background:var(--white);
+  }
+  nav button{
+    flex:1;
+    padding:13px 4px;
+    background:none;
+    border:none;
+    font-size:13.5px;
+    color:#555;
+    border-bottom:3px solid transparent;
+    cursor:pointer;
+  }
+  nav button.active{
+    color:var(--ink);
+    border-bottom:3px solid var(--red);
+    font-weight:700;
+  }
+
+  main{
+    flex:1;
+    padding:18px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    max-width:520px;
+    width:100%;
+    margin:0 auto;
+  }
+
+  .panel{display:none;flex-direction:column;gap:14px;}
+  .panel.active{display:flex;}
+
+  .fixed-direction{
+    text-align:center;
+    font-size:15px;
+    font-weight:700;
+    color:var(--ink);
+    letter-spacing:.3px;
+  }
+
+  .lang-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    justify-content:center;
+  }
+  .lang-pill{
+    background:var(--blue);
+    color:#fff;
+    padding:8px 14px;
+    border-radius:3px;
+    font-size:22px;
+    font-weight:600;
+    min-width:70px;
+    text-align:center;
+    line-height:1.2;
+  }
+  .swap-btn{
+    width:34px;height:34px;
+    border-radius:50%;
+    border:2px solid var(--ink);
+    background:#fff;
+    color:var(--ink);
+    font-size:16px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  video{
+    width:100%;
+    border-radius:4px;
+    background:#111;
+    display:block;
+    max-height:46vh;
+    object-fit:cover;
+    border:2px solid var(--ink);
+  }
+  canvas{display:none;}
+
+  .btn{
+    padding:13px 18px;
+    border-radius:3px;
+    border:2px solid var(--ink);
+    font-size:15px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .btn-primary{background:var(--blue);color:#fff;border-color:var(--blue);}
+  .btn-primary:disabled{background:#B7C3D6;border-color:#B7C3D6;}
+  .btn-stamp{background:var(--red);color:#fff;border-color:var(--red);}
+  .btn-outline{background:transparent;color:var(--ink);}
+
+  .result-card{
+    background:var(--white);
+    border:2px solid var(--ink);
+    border-radius:4px;
+    padding:16px;
+    min-height:64px;
+    font-size:19px;
+    font-weight:600;
+    line-height:1.5;
+    position:relative;
+  }
+  .result-card .label{
+    font-size:11.5px;
+    color:#555;
+    margin-bottom:6px;
+    font-weight:700;
+    letter-spacing:.4px;
+  }
+  .copy-btn{
+    position:absolute;
+    top:10px;
+    right:10px;
+    border:1px solid var(--ink);
+    background:#fff;
+    border-radius:3px;
+    font-size:11px;
+    padding:4px 8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .copy-btn:active{background:var(--bg-soft);}
+
+  .status{
+    font-size:13px;
+    color:#444;
+    text-align:center;
+    min-height:18px;
+  }
+
+  .mic-wrap{
+    display:flex;
+    justify-content:center;
+    padding:8px 0;
+  }
+  .mic-btn{
+    width:82px;height:82px;
+    border-radius:50%;
+    border:3px solid var(--ink);
+    background:var(--blue);
+    color:#fff;
+    font-size:28px;
+    cursor:pointer;
+    box-shadow:0 0 0 0 rgba(200,16,46,.4);
+    transition:transform .15s ease;
+  }
+  .mic-btn.listening{
+    background:var(--red);
+    animation:pulse 1.4s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(200,16,46,.45);}
+    70%{box-shadow:0 0 0 18px rgba(200,16,46,0);}
+    100%{box-shadow:0 0 0 0 rgba(200,16,46,0);}
+  }
+
+  .history{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    margin-top:4px;
+  }
+  .history .h-title{
+    font-size:11.5px;
+    font-weight:700;
+    color:#555;
+    letter-spacing:.4px;
+  }
+  .history-item{
+    border:1px solid var(--line-soft);
+    border-radius:4px;
+    padding:9px 11px;
+    font-size:13px;
+    background:var(--bg-soft);
+  }
+  .history-item .orig{color:#666;font-size:12px;margin-bottom:2px;}
+  .history-item .trans{color:var(--ink);font-weight:600;}
+
+  .transcript-log{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    overflow-y:auto;
+    max-height:52vh;
+  }
+  .bubble{
+    padding:10px 13px;
+    border-radius:4px;
+    font-size:16px;
+    font-weight:600;
+    line-height:1.4;
+    max-width:88%;
+    border:2px solid var(--ink);
+  }
+  .bubble .orig{color:#555;font-size:12.5px;margin-bottom:3px;font-weight:400;}
+  .bubble.me{align-self:flex-end;background:#fff;}
+  .bubble.them{align-self:flex-start;background:var(--blue);color:#fff;border-color:var(--blue);}
+  .bubble.them .orig{color:#D7E1F2;}
+
+  footer{
+    padding:12px 20px 20px;
+    font-size:11.5px;
+    color:#555;
+    text-align:center;
+    border-top:1px solid var(--line-soft);
+  }
+</style>
+</head>
+<body>
+
+<div class="offline-banner" id="offline-banner">Sin conexión a internet — la traducción no va a funcionar hasta que vuelva la red.</div>
+
+<header>
+  <div class="brand">
+    <span class="kanji">言葉</span>
+    <span class="name">Kotoba</span>
+    <span class="flag">🇯🇵</span>
+  </div>
+  <div class="sub">Traductor de bolsillo para tu viaje a Japón</div>
+</header>
+
+<nav>
+  <button class="tab-btn active" data-panel="camera">Cámara</button>
+  <button class="tab-btn" data-panel="voice">Conversación</button>
+  <button class="tab-btn" data-panel="transcribe">Transcribir</button>
+</nav>
+
+<main>
+
+  <!-- CAMERA PANEL -->
+  <section class="panel active" id="panel-camera">
+    <div class="fixed-direction">🇯🇵 → 🇦🇷</div>
+    <video id="cam-video" autoplay playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-outline" id="cam-start" style="flex:1;">Encender cámara</button>
+      <button class="btn btn-stamp" id="cam-capture" style="flex:1;" disabled>Leer y traducir</button>
+    </div>
+    <div class="status" id="cam-status">Apuntá la cámara a un cartel, menú o etiqueta.</div>
+    <div class="result-card">
+      <div class="label">TEXTO DETECTADO</div>
+      <div id="cam-original">—</div>
+    </div>
+    <div class="result-card">
+      <button class="copy-btn" id="cam-copy">Copiar</button>
+      <div class="label">TRADUCCIÓN</div>
+      <div id="cam-translated">—</div>
+    </div>
+    <div class="history" id="cam-history-wrap" style="display:none;">
+      <div class="h-title">TRADUCCIONES ANTERIORES</div>
+      <div id="cam-history"></div>
+    </div>
+  </section>
+
+  <!-- VOICE PANEL -->
+  <section class="panel" id="panel-voice">
+    <div class="lang-row">
+      <span class="lang-pill" id="voice-lang-a">🇦🇷</span>
+      <button class="swap-btn" id="voice-swap" title="Cambiar dirección">⇄</button>
+      <span class="lang-pill" id="voice-lang-b">🇯🇵</span>
+    </div>
+    <div class="status" id="voice-status">Tocá el micrófono para empezar a hablar en español. Tocalo de nuevo cuando termines.</div>
+    <div class="mic-wrap">
+      <button class="mic-btn" id="voice-mic">🎤</button>
+    </div>
+    <div class="result-card">
+      <div class="label">DIJISTE</div>
+      <div id="voice-original">—</div>
+    </div>
+    <div class="result-card">
+      <button class="copy-btn" id="voice-copy">Copiar</button>
+      <div class="label">SE ESCUCHA EN EL OTRO IDIOMA COMO</div>
+      <div id="voice-translated">—</div>
+    </div>
+    <div class="history" id="voice-history-wrap" style="display:none;">
+      <div class="h-title">CONVERSACIÓN ANTERIOR</div>
+      <div id="voice-history"></div>
+    </div>
+  </section>
+
+  <!-- TRANSCRIBE PANEL -->
+  <section class="panel" id="panel-transcribe">
+    <div class="status" id="trans-status">Tocá el micrófono para empezar a escuchar. Tocalo de nuevo para cortar y traducir.</div>
+    <div class="mic-wrap">
+      <button class="mic-btn" id="trans-mic">🎤</button>
+    </div>
+    <div class="transcript-log" id="trans-log"></div>
+  </section>
+
+</main>
+
+<footer>
+  Funciona mejor en Chrome (Android). Necesita conexión a internet y permisos de cámara / micrófono.
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script>
+// ---------- Offline indicator ----------
+const offlineBanner = document.getElementById('offline-banner');
+function updateOnlineStatus(){
+  offlineBanner.classList.toggle('show', !navigator.onLine);
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+
+// ---------- Utilities ----------
+// Google Translate's public web endpoint (same engine behind Google Translate/apps).
+// No API key required. Best-effort; if it ever stops responding, this is the single
+// place to swap the translation backend.
+async function translateText(text, sourceLang, targetLang){
+  if(!text || !text.trim()) return "";
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  // Response shape: [ [ [translatedChunk, originalChunk, ...], ... ], ... ]
+  if(!Array.isArray(data) || !Array.isArray(data[0])) return "(no se pudo traducir)";
+  return data[0].map(chunk => chunk[0]).join("");
+}
+
+function speak(text, langCode){
+  if(!text) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = langCode;
+  window.speechSynthesis.speak(u);
+}
+
+function copyToClipboard(text, btn){
+  if(!text || text === "—") return;
+  navigator.clipboard.writeText(text).then(()=>{
+    const original = btn.textContent;
+    btn.textContent = "Copiado";
+    setTimeout(()=>{ btn.textContent = original; }, 1400);
+  }).catch(()=>{});
+}
+
+function pushHistory(wrapEl, listEl, original, translated, max){
+  wrapEl.style.display = 'flex';
+  const div = document.createElement('div');
+  div.className = 'history-item';
+  div.innerHTML = `<div class="orig">${original}</div><div class="trans">${translated}</div>`;
+  listEl.prepend(div);
+  while(listEl.children.length > max){
+    listEl.removeChild(listEl.lastChild);
+  }
+}
+
+// ---------- Tabs ----------
+const tabBtns = document.querySelectorAll('.tab-btn');
+tabBtns.forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    tabBtns.forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.panel).classList.add('active');
+    window.speechSynthesis.cancel();
+  });
+});
+
+// ---------- CAMERA MODE (fixed direction: 日本語 → Español) ----------
+const camVideo = document.getElementById('cam-video');
+const camCanvas = document.getElementById('cam-canvas');
+const camStart = document.getElementById('cam-start');
+const camCapture = document.getElementById('cam-capture');
+const camStatus = document.getElementById('cam-status');
+const camOriginal = document.getElementById('cam-original');
+const camTranslated = document.getElementById('cam-translated');
+const camCopyBtn = document.getElementById('cam-copy');
+const camHistoryWrap = document.getElementById('cam-history-wrap');
+const camHistoryList = document.getElementById('cam-history');
+let camStream = null;
+
+camStart.addEventListener('click', async ()=>{
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    camVideo.srcObject = camStream;
+    camCapture.disabled = false;
+    camStart.textContent = "Cámara encendida";
+    camStart.disabled = true;
+    camStatus.textContent = "Listo. Encuadrá el texto y tocá 'Leer y traducir'.";
+  }catch(err){
+    camStatus.textContent = "No se pudo acceder a la cámara: " + err.message;
+  }
+});
+
+camCapture.addEventListener('click', async ()=>{
+  camCapture.disabled = true;
+  camStatus.textContent = "Leyendo texto de la imagen…";
+  camOriginal.textContent = "—";
+  camTranslated.textContent = "—";
+
+  camCanvas.width = camVideo.videoWidth;
+  camCanvas.height = camVideo.videoHeight;
+  const ctx = camCanvas.getContext('2d');
+  ctx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
+
+  try{
+    const { data } = await Tesseract.recognize(camCanvas, 'jpn+eng', {
+      logger: m => {
+        if(m.status === 'recognizing text'){
+          camStatus.textContent = `Leyendo texto… ${Math.round(m.progress*100)}%`;
+        }
+      }
+    });
+    const text = data.text.trim();
+    if(!text){
+      camStatus.textContent = "No detecté texto legible. Probá acercar la cámara.";
+      camCapture.disabled = false;
+      return;
+    }
+    camOriginal.textContent = text;
+    camStatus.textContent = "Traduciendo…";
+    const translated = await translateText(text, 'ja', 'es');
+    camTranslated.textContent = translated;
+    camStatus.textContent = "Listo.";
+    pushHistory(camHistoryWrap, camHistoryList, text, translated, 5);
+  }catch(err){
+    camStatus.textContent = "Error al leer/traducir: " + err.message;
+  }
+  camCapture.disabled = false;
+});
+
+camCopyBtn.addEventListener('click', ()=> copyToClipboard(camTranslated.textContent, camCopyBtn));
+
+// ---------- VOICE CONVERSATION MODE (toggle mic: tap to start, tap to stop & translate) ----------
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voiceMic = document.getElementById('voice-mic');
+const voiceStatus = document.getElementById('voice-status');
+const voiceOriginal = document.getElementById('voice-original');
+const voiceTranslated = document.getElementById('voice-translated');
+const voiceCopyBtn = document.getElementById('voice-copy');
+const voiceSwap = document.getElementById('voice-swap');
+const voiceLangA = document.getElementById('voice-lang-a');
+const voiceLangB = document.getElementById('voice-lang-b');
+const voiceHistoryWrap = document.getElementById('voice-history-wrap');
+const voiceHistoryList = document.getElementById('voice-history');
+
+let voiceDirection = 'es-to-ja'; // or 'ja-to-es'
+let voiceRecognition = null;
+let voiceListening = false;
+let voiceBuffer = [];
+
+function updateVoiceLabels(){
+  if(voiceDirection === 'es-to-ja'){
+    voiceLangA.textContent = "🇦🇷";
+    voiceLangA.style.background = "var(--blue)";
+    voiceLangB.textContent = "🇯🇵";
+    voiceLangB.style.background = "var(--red)";
+    voiceStatus.textContent = "Tocá el micrófono para empezar a hablar en español. Tocalo de nuevo cuando termines.";
+  } else {
+    voiceLangA.textContent = "🇯🇵";
+    voiceLangA.style.background = "var(--red)";
+    voiceLangB.textContent = "🇦🇷";
+    voiceLangB.style.background = "var(--blue)";
+    voiceStatus.textContent = "日本語で話してください。話し終えたらもう一度タップ。";
+  }
+}
+
+voiceSwap.addEventListener('click', ()=>{
+  voiceDirection = voiceDirection === 'es-to-ja' ? 'ja-to-es' : 'es-to-ja';
+  updateVoiceLabels();
+});
+
+async function finishVoiceListening(){
+  const said = voiceBuffer.join(' ').trim();
+  voiceBuffer = [];
+  if(!said){
+    updateVoiceLabels();
+    return;
+  }
+  voiceOriginal.textContent = said;
+  voiceTranslated.textContent = "Traduciendo…";
+
+  const fromLang = voiceDirection === 'es-to-ja' ? 'es' : 'ja';
+  const toLang = voiceDirection === 'es-to-ja' ? 'ja' : 'es';
+  const toSpeechLang = voiceDirection === 'es-to-ja' ? 'ja-JP' : 'es-ES';
+
+  try{
+    const translated = await translateText(said, fromLang, toLang);
+    voiceTranslated.textContent = translated;
+    speak(translated, toSpeechLang);
+    pushHistory(voiceHistoryWrap, voiceHistoryList, said, translated, 6);
+  }catch(err){
+    voiceTranslated.textContent = "Error al traducir.";
+  }
+  updateVoiceLabels();
+}
+
+function setupVoiceRecognition(){
+  if(!SpeechRecognition){
+    voiceStatus.textContent = "Este navegador no soporta reconocimiento de voz. Probá con Chrome en Android.";
+    voiceMic.disabled = true;
+    return null;
+  }
+  const rec = new SpeechRecognition();
+  rec.continuous = true;
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onresult = (event)=>{
+    // Accumulate every finalized chunk instead of translating immediately,
+    // so a mid-sentence pause doesn't cut the phrase short.
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      if(event.results[i].isFinal){
+        voiceBuffer.push(event.results[i][0].transcript.trim());
+      }
+    }
+  };
+
+  rec.onerror = (e)=>{
+    voiceStatus.textContent = "Error de micrófono: " + e.error;
+    voiceListening = false;
+    voiceMic.classList.remove('listening');
+    finishVoiceListening();
+  };
+
+  rec.onend = ()=>{
+    if(voiceListening){
+      // Recognition can time out on its own even mid-toggle; restart it
+      // silently as long as the user hasn't tapped stop.
+      try{ rec.start(); }catch(e){}
+    }
+  };
+
+  return rec;
+}
+
+voiceMic.addEventListener('click', ()=>{
+  if(voiceListening){
+    voiceListening = false;
+    voiceMic.classList.remove('listening');
+    voiceRecognition && voiceRecognition.stop();
+    voiceStatus.textContent = "Traduciendo lo que dijiste…";
+    finishVoiceListening();
+    return;
+  }
+  voiceRecognition = setupVoiceRecognition();
+  if(!voiceRecognition) return;
+  voiceRecognition.lang = voiceDirection === 'es-to-ja' ? 'es-ES' : 'ja-JP';
+  voiceBuffer = [];
+  voiceListening = true;
+  voiceMic.classList.add('listening');
+  voiceStatus.textContent = "Escuchando… tocá de nuevo cuando termines de hablar.";
+  voiceRecognition.start();
+});
+
+voiceCopyBtn.addEventListener('click', ()=> copyToClipboard(voiceTranslated.textContent, voiceCopyBtn));
+
+updateVoiceLabels();
+
+// ---------- TRANSCRIBE MODE (toggle mic: tap to start listening, tap to stop & translate) ----------
+const transMic = document.getElementById('trans-mic');
+const transStatus = document.getElementById('trans-status');
+const transLog = document.getElementById('trans-log');
+let transRecognition = null;
+let transListening = false;
+let transBuffer = [];
+
+function addBubble(original, translated, who){
+  const div = document.createElement('div');
+  div.className = 'bubble ' + (who === 'es' ? 'me' : 'them');
+  div.innerHTML = `<div class="orig">${original}</div><div>${translated}</div>`;
+  transLog.appendChild(div);
+  transLog.scrollTop = transLog.scrollHeight;
+}
+
+// Naive language guess: if text has Japanese characters, treat as Japanese.
+function looksJapanese(text){
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+}
+
+async function finishTransListening(){
+  const said = transBuffer.join(' ').trim();
+  transBuffer = [];
+  if(!said){
+    transStatus.textContent = "Tocá el micrófono para empezar a escuchar. Tocalo de nuevo para cortar y traducir.";
+    return;
+  }
+  const isJa = looksJapanese(said);
+  const fromLang = isJa ? 'ja' : 'es';
+  const toLang = isJa ? 'es' : 'ja';
+  try{
+    const translated = await translateText(said, fromLang, toLang);
+    addBubble(said, translated, isJa ? 'ja' : 'es');
+  }catch(err){
+    addBubble(said, "(error al traducir)", isJa ? 'ja' : 'es');
+  }
+  transStatus.textContent = "Tocá el micrófono para empezar a escuchar. Tocalo de nuevo para cortar y traducir.";
+}
+
+function setupTransRecognition(){
+  if(!SpeechRecognition){
+    transStatus.textContent = "Este navegador no soporta reconocimiento de voz. Probá con Chrome en Android.";
+    transMic.disabled = true;
+    return null;
+  }
+  const rec = new SpeechRecognition();
+  rec.continuous = true;
+  rec.interimResults = false;
+  rec.lang = 'ja-JP'; // primary target: catch Japanese speech around you
+
+  rec.onresult = (event)=>{
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      if(event.results[i].isFinal){
+        transBuffer.push(event.results[i][0].transcript.trim());
+      }
+    }
+  };
+
+  rec.onerror = (e)=>{
+    transStatus.textContent = "Error: " + e.error;
+    transListening = false;
+    transMic.classList.remove('listening');
+    finishTransListening();
+  };
+
+  rec.onend = ()=>{
+    if(transListening){
+      try{ rec.start(); }catch(e){}
+    }
+  };
+
+  return rec;
+}
+
+transMic.addEventListener('click', ()=>{
+  if(transListening){
+    transListening = false;
+    transMic.classList.remove('listening');
+    transRecognition && transRecognition.stop();
+    transStatus.textContent = "Traduciendo lo que escuchó…";
+    finishTransListening();
+    return;
+  }
+  transRecognition = setupTransRecognition();
+  if(!transRecognition) return;
+  transBuffer = [];
+  transListening = true;
+  transMic.classList.add('listening');
+  transStatus.textContent = "Escuchando… tocá de nuevo para cortar y traducir.";
+  transRecognition.start();
+});
+</script>
+
+</body>
+</html>
