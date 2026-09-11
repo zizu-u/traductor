@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Emberkit: Salto de Cresta</title>
+<style>
+  :root {
+    --sky-top: #8ecae6;
+    --sky-bot: #219ebc;
+    --ground: #5a3a2a;
+    --ground-top: #7a9e5c;
+    --ember: #ff6a3d;
+    --cream: #fff8ec;
+    --ink: #1a2333;
+    --gold: #ffd23f;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--ink);
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    color: var(--cream);
+  }
+
+  #hud .title {
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0.85;
+  }
+
+  #gems {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #00000033;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  #gems .icon { color: var(--gold); }
+
+  #timer {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #00000033;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  #timer.urgent { color: #ff5a5a; }
+
+  #hearts { display: flex; gap: 3px; font-size: 15px; }
+
+  #arena-wrap {
+    flex: 1;
+    position: relative;
+    margin: 0 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 2px solid #ffffff22;
+  }
+
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #banner, #msg {
+    position: absolute;
+    left: 0; right: 0;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #banner {
+    top: 10px;
+    font-size: 13px;
+    color: var(--cream);
+    text-shadow: 0 1px 3px #000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  #banner.show { opacity: 1; }
+
+  #result-overlay {
+    position: absolute;
+    inset: 0;
+    background: #10151fdd;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    text-align: center;
+    padding: 20px;
+    color: var(--cream);
+  }
+  #result-overlay.show { display: flex; }
+
+  #result-title { font-size: 24px; font-weight: bold; }
+  #result-sub { font-size: 13px; opacity: 0.8; max-width: 260px; }
+
+  .btn-primary {
+    background: linear-gradient(180deg, var(--ember), #c94a26);
+    border: none; color: #fff;
+    padding: 12px 26px; border-radius: 10px;
+    font-size: 15px; font-weight: bold;
+    box-shadow: 0 4px 0 #7a2c14;
+  }
+  .btn-primary:active { transform: translateY(2px); box-shadow: 0 2px 0 #7a2c14; }
+
+  #tap-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 12px;
+    color: var(--cream);
+    opacity: 0.55;
+    pointer-events: none;
+    letter-spacing: 0.3px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span class="title">Salto de Cresta</span>
+    <div id="timer">⏱ <span id="time-left">60</span></div>
+    <div id="gems"><span class="icon">◆</span><span id="gem-count">0</span>/<span id="gem-total">0</span></div>
+  </div>
+
+
+  <div id="arena-wrap">
+    <canvas id="game"></canvas>
+    <div id="banner"></div>
+    <div id="tap-hint">Toca la pantalla para saltar</div>
+    <div id="result-overlay">
+      <div id="result-title"></div>
+      <div id="result-sub"></div>
+      <button class="btn-primary" id="retry-btn">Reintentar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('arena-wrap');
+
+  function resize() {
+    canvas.width = wrap.clientWidth;
+    canvas.height = wrap.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ---- Level definition ----
+  // Coordinates in world units. World is wider than screen; camera scrolls.
+  const TILE = 44;
+  const levelData = {
+    width: 6500,
+    groundY: 0, // set relative to canvas height at runtime
+    platforms: [
+      // x, y (offset above ground, positive = higher), w
+      { x: 0, y: 0, w: 700 },
+      { x: 780, y: 60, w: 160 },
+      { x: 1000, y: 120, w: 140 },
+      { x: 1220, y: 60, w: 160 },
+      { x: 1460, y: 0, w: 400 },
+      { x: 1930, y: 90, w: 130 },
+      { x: 2140, y: 150, w: 120 },
+      { x: 2350, y: 90, w: 130 },
+      { x: 2570, y: 0, w: 500 },
+      { x: 3150, y: 70, w: 420 },
+      { x: 3650, y: 130, w: 160 },
+      { x: 3870, y: 190, w: 140 },
+      { x: 4090, y: 130, w: 160 },
+      { x: 4330, y: 70, w: 400 },
+      { x: 4800, y: 160, w: 130 },
+      { x: 5010, y: 220, w: 120 },
+      { x: 5220, y: 160, w: 130 },
+      { x: 5440, y: 70, w: 500 },
+      { x: 6020, y: 140, w: 420 },
+    ],
+    gaps_are_implicit: true,
+    gems: [
+      { x: 300, y: 90 }, { x: 500, y: 90 },
+      { x: 820, y: 150 }, { x: 1040, y: 210 },
+      { x: 1260, y: 150 }, { x: 1550, y: 90 }, { x: 1700, y: 90 },
+      { x: 1970, y: 180 }, { x: 2180, y: 240 }, { x: 2390, y: 180 },
+      { x: 2670, y: 90 }, { x: 2870, y: 90 }, { x: 3070, y: 90 },
+      { x: 3270, y: 160 },
+      { x: 3730, y: 130 }, { x: 3940, y: 190 }, { x: 4170, y: 130 },
+      { x: 4500, y: 70 }, { x: 4650, y: 70 },
+      { x: 4865, y: 160 },
+      { x: 5070, y: 220 },
+      { x: 5285, y: 160 },
+      { x: 5600, y: 70 }, { x: 5800, y: 70 },
+      { x: 6120, y: 140 }, { x: 6300, y: 140 },
+    ],
+    enemies: [
+      { x: 500, rangeMin: 420, rangeMax: 650, y: 0 },
+      { x: 1550, rangeMin: 1500, rangeMax: 1820, y: 0 },
+      { x: 2670, rangeMin: 2620, rangeMax: 3020, y: 0 },
+      { x: 4450, rangeMin: 4380, rangeMax: 4680, y: 70 },
+      { x: 5560, rangeMin: 5490, rangeMax: 5840, y: 70 },
+    ],
+    goalX: 6360,
+  };
+
+  document.getElementById('gem-total').textContent = levelData.gems.length;
+
+  let cameraX = 0;
+  let groundScreenY = 0;
+
+  function computeGroundY() {
+    groundScreenY = canvas.height * 0.82;
+  }
+  computeGroundY();
+  window.addEventListener('resize', computeGroundY);
+
+  const player = {
+    x: 60, y: 0, vx: 0, vy: 0,
+    w: 34, h: 38,
+    onGround: false,
+    facing: 1,
+    animPhase: 0,
+    dead: false,
+  };
+
+  let gemCount = 0;
+  let gameWon = false;
+  let gameOver = false;
+  let timeLeft = 60;
+  let timerId = null;
+
+  function platformAt(worldX) {
+    for (const p of levelData.platforms) {
+      if (worldX >= p.x && worldX <= p.x + p.w) return p;
+    }
+    return null;
+  }
+
+  // Tap/click anywhere on the screen to jump (except on the retry button).
+  function handleTapToJump(e) {
+    if (e.target.closest('button')) return; // let the retry button work normally
+    e.preventDefault();
+    tryJump();
+  }
+  document.addEventListener('touchstart', handleTapToJump, { passive: false });
+  document.addEventListener('mousedown', handleTapToJump);
+
+  document.getElementById('retry-btn').addEventListener('click', restart);
+
+  function tryJump() {
+    ensureAudioContext();
+    if (player.onGround && !gameOver && !gameWon) {
+      player.vy = 16;
+      player.onGround = false;
+    }
+  }
+
+  function showBanner(text, ms) {
+    const b = document.getElementById('banner');
+    b.textContent = text;
+    b.classList.add('show');
+    setTimeout(() => b.classList.remove('show'), ms || 1500);
+  }
+
+  function updateGemUI() {
+    document.getElementById('gem-count').textContent = gemCount;
+  }
+
+  function updateTimerUI() {
+    const el = document.getElementById('time-left');
+    el.textContent = Math.max(timeLeft, 0);
+    document.getElementById('timer').classList.toggle('urgent', timeLeft <= 15);
+  }
+
+  function startTimer() {
+    if (timerId) clearInterval(timerId);
+    timeLeft = 60;
+    updateTimerUI();
+    timerId = setInterval(() => {
+      if (gameOver || gameWon) return;
+      timeLeft--;
+      updateTimerUI();
+      if (timeLeft <= 0) {
+        clearInterval(timerId);
+        triggerDeath();
+      }
+    }, 1000);
+  }
+
+  function restart() {
+    ensureAudioContext();
+    player.x = 60; player.y = 0; player.vx = 0; player.vy = 0;
+    player.onGround = false; player.animPhase = 0; player.dead = false;
+    gemCount = 0; gameWon = false; gameOver = false;
+    levelData.gems.forEach(g => g.taken = false);
+    levelData.enemies.forEach(e => { e.defeated = false; e.x = e.startX; e.dir = e.startDir; });
+    document.getElementById('result-overlay').classList.remove('show');
+    updateGemUI();
+    startTimer();
+    startMusic();
+    showBanner('¡Un solo salto en falso y empiezas de nuevo!', 2200);
+  }
+
+  function endGame(won) {
+    gameWon = true;
+    if (timerId) clearInterval(timerId);
+    stopMusic();
+    const overlay = document.getElementById('result-overlay');
+    const title = document.getElementById('result-title');
+    const sub = document.getElementById('result-sub');
+    title.textContent = '¡Nivel superado!';
+    title.style.color = '#ffd23f';
+    sub.textContent = 'Conseguiste ' + gemCount + ' de ' + levelData.gems.length + ' gemas.';
+    overlay.classList.add('show');
+  }
+
+  function triggerDeath() {
+    if (gameOver || gameWon) return;
+    gameOver = true;
+    if (timerId) clearInterval(timerId);
+    stopMusic();
+    playDeathSound();
+    const overlay = document.getElementById('result-overlay');
+    const title = document.getElementById('result-title');
+    const sub = document.getElementById('result-sub');
+    title.textContent = 'You have died, my friend';
+    title.style.color = '#ff6a3d';
+    sub.textContent = 'Vuelve a empezar desde el principio.';
+    overlay.classList.add('show');
+  }
+
+  function hurtPlayer() {
+    triggerDeath();
+  }
+
+  // enemies simple back-forth walkers
+  levelData.enemies.forEach(e => { e.vx = 1.4; e.dir = 1; e.startX = e.x; e.startDir = 1; });
+
+  // ---- Suspense/chase piano music (generated, no external files) ----
+  let audioCtx = null;
+  let musicPlaying = false;
+  let musicTimeoutId = null;
+  let musicStep = 0;
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  // (audio unlock now happens inside tryJump()/restart() via the tap-to-jump handler)
+
+  function playNote(freq, duration, peakGain, type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type || 'triangle';
+    osc.frequency.value = freq;
+    const now = audioCtx.currentTime;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(peakGain, now + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.03);
+  }
+
+  function playGemSound() {
+    ensureAudioContext();
+    if (!audioCtx) return;
+    // bright little "clinnn" bell
+    playNote(1568, 0.28, 0.14, 'sine');
+    playNote(2093, 0.22, 0.08, 'sine');
+  }
+
+  function playDeathSound() {
+    ensureAudioContext();
+    if (!audioCtx) return;
+    // sad descending "wannnnn" slide
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    const now = audioCtx.currentTime;
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(75, now + 1.1);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.18, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 1.25);
+  }
+
+  function scheduleMusicLoop() {
+    if (!musicPlaying) return;
+    const urgent = timeLeft <= 15 && !gameOver && !gameWon;
+    const stepDur = urgent ? 0.13 : 0.19;
+    const noteFreq = musicStep % 2 === 0 ? 329.63 : 349.23; // E4 / F4 - half-step suspense motif
+    playNote(noteFreq, stepDur * 1.5, 0.08, 'triangle');
+    if (musicStep % 4 === 0) {
+      playNote(82.41, stepDur * 3, 0.11, 'sine'); // low E bass pulse
+    }
+    musicStep++;
+    musicTimeoutId = setTimeout(scheduleMusicLoop, stepDur * 1000);
+  }
+
+  function startMusic() {
+    if (musicPlaying) return;
+    musicPlaying = true;
+    musicStep = 0;
+    scheduleMusicLoop();
+  }
+
+  function stopMusic() {
+    musicPlaying = false;
+    if (musicTimeoutId) clearTimeout(musicTimeoutId);
+  }
+
+  function updatePhysics() {
+    if (gameOver || gameWon) return;
+
+    // Emberkit avanza solo; el jugador únicamente controla el salto.
+    player.vx = gameOver || gameWon ? 0 : 2.6;
+
+    player.x += player.vx;
+    player.x = Math.max(20, Math.min(levelData.width - 20, player.x));
+
+    // player.y is height above ground: positive = up, 0 = ground level.
+    // Gravity reduces height velocity over time (pulls down).
+    const prevY = player.y;
+    player.vy -= 0.7;
+    player.y += player.vy;
+
+    const plat = platformAt(player.x);
+    if (plat) {
+      const surfaceY = plat.y;
+      // Only counts as landing if the player was above the surface a moment ago
+      // and is now crossing down through it — prevents "catching" a fall from way above.
+      if (prevY >= surfaceY - 1 && player.y <= surfaceY && player.vy <= 0) {
+        player.y = surfaceY;
+        player.vy = 0;
+        player.onGround = true;
+      } else {
+        player.onGround = false;
+      }
+    } else {
+      player.onGround = false;
+    }
+
+    if (player.y < -400 && !gameOver && !gameWon) {
+      triggerDeath();
+      return;
+    }
+
+    // gems
+    for (const g of levelData.gems) {
+      if (g.taken) continue;
+      const dx = player.x - g.x;
+      const dy = player.y - g.y;
+      if (Math.abs(dx) < 26 && Math.abs(dy) < 26) {
+        g.taken = true;
+        gemCount++;
+        updateGemUI();
+        playGemSound();
+      }
+    }
+
+    // enemies movement + collision
+    for (const e of levelData.enemies) {
+      e.x += e.vx * e.dir;
+      if (e.x > e.rangeMax) e.dir = -1;
+      if (e.x < e.rangeMin) e.dir = 1;
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      if (!e.defeated && Math.abs(dx) < 28 && Math.abs(dy) < 30) {
+        // stomp if falling onto it from above
+        if (player.vy < -2 && dy > 0 && dy < 22) {
+          e.defeated = true;
+          player.vy = 9;
+          showBanner('¡Rodabicho derrotado!', 800);
+        } else {
+          hurtPlayer();
+        }
+      }
+    }
+
+    // goal
+    if (player.x >= levelData.goalX) {
+      endGame(true);
+    }
+
+    // camera
+    cameraX = Math.max(0, Math.min(levelData.width - canvas.width, player.x - canvas.width * 0.35));
+  }
+
+  function worldToScreenX(wx) { return wx - cameraX; }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    g.addColorStop(0, '#8ecae6');
+    g.addColorStop(1, '#219ebc');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // parallax hills
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    for (let i = 0; i < 4; i++) {
+      const hx = ((i * 260) - (cameraX * 0.2) % 1200);
+      ctx.beginPath();
+      ctx.ellipse(hx, groundScreenY - 10, 140, 60, 0, Math.PI, 0);
+      ctx.fill();
+    }
+    // sun
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath();
+    ctx.arc(canvas.width - 50, 50, 26, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawPlatforms() {
+    for (const p of levelData.platforms) {
+      const sx = worldToScreenX(p.x);
+      if (sx + p.w < 0 || sx > canvas.width) continue;
+      const topY = groundScreenY - p.y;
+      ctx.fillStyle = '#7a9e5c';
+      ctx.fillRect(sx, topY, p.w, 14);
+      ctx.fillStyle = '#5a3a2a';
+      ctx.fillRect(sx, topY + 14, p.w, canvas.height - topY - 14 + 40);
+    }
+  }
+
+  function drawGems() {
+    for (const g of levelData.gems) {
+      if (g.taken) continue;
+      const sx = worldToScreenX(g.x);
+      if (sx < -20 || sx > canvas.width + 20) continue;
+      const sy = groundScreenY - g.y;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(Math.PI / 4);
+      const grad = ctx.createLinearGradient(-10, -10, 10, 10);
+      grad.addColorStop(0, '#fff5b8');
+      grad.addColorStop(1, '#ffd23f');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-9, -9, 18, 18);
+      ctx.restore();
+    }
+  }
+
+  function drawEnemies() {
+    for (const e of levelData.enemies) {
+      if (e.defeated) continue;
+      const sx = worldToScreenX(e.x);
+      if (sx < -30 || sx > canvas.width + 30) continue;
+      const sy = groundScreenY - e.y;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.fillStyle = '#a83279';
+      ctx.beginPath();
+      ctx.ellipse(0, -14, 20, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1a2333';
+      ctx.beginPath();
+      ctx.arc(-6 * e.dir, -16, 3, 0, Math.PI * 2);
+      ctx.arc(6 * e.dir, -16, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawGoal() {
+    const sx = worldToScreenX(levelData.goalX);
+    if (sx < -50 || sx > canvas.width + 50) return;
+    const baseY = groundScreenY;
+    ctx.strokeStyle = '#5a3a2a';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(sx, baseY);
+    ctx.lineTo(sx, baseY - 130);
+    ctx.stroke();
+    ctx.fillStyle = '#ff6a3d';
+    ctx.beginPath();
+    ctx.moveTo(sx, baseY - 130);
+    ctx.lineTo(sx + 40, baseY - 112);
+    ctx.lineTo(sx, baseY - 94);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawLimb(pivotX, pivotY, angle, length, width, color) {
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(angle);
+    roundRectPath(-width / 2, 0, width, length, width / 2.2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlayer() {
+    const sx = worldToScreenX(player.x);
+    const feetY = groundScreenY - player.y;
+
+    if (player.onGround && !gameOver && !gameWon) {
+      player.animPhase += 0.22 + Math.abs(player.vx) * 0.05;
+    }
+
+    const running = player.onGround && !gameOver && !gameWon;
+    const legA = running ? Math.sin(player.animPhase) * 0.6 : -0.35;
+    const legB = running ? Math.sin(player.animPhase + Math.PI) * 0.6 : 0.55;
+    const armA = running ? Math.sin(player.animPhase + Math.PI) * 0.5 : -0.9;
+    const armB = running ? Math.sin(player.animPhase) * 0.5 : 0.95;
+
+    const jeans = '#33507a';
+    const jeansDark = '#25405f';
+    const shirt = '#f6f3ea';
+    const shirtDark = '#ddd8c9';
+    const skin = '#c99a6b';
+    const hair = '#241c16';
+
+    const hipY = -26, shoulderY = -52, headY = -66, headR = 12;
+
+    ctx.save();
+    ctx.translate(sx, feetY);
+
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(0, 3, 15, 4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fill();
+
+    // back leg + back arm (behind torso)
+    drawLimb(-4, hipY, legB, 26, 9, jeansDark);
+    drawLimb(8, shoulderY, armB, 20, 6.5, shirtDark);
+
+    // torso (white sweatshirt)
+    roundRectPath(-12, shoulderY, 24, hipY - shoulderY + 6, 7);
+    ctx.fillStyle = shirt;
+    ctx.fill();
+
+    // front leg + front arm
+    drawLimb(4, hipY, legA, 26, 9, jeans);
+    drawLimb(-8, shoulderY, armA, 20, 6.5, shirt);
+
+    // neck
+    ctx.fillStyle = skin;
+    ctx.fillRect(-4, shoulderY - 6, 8, 7);
+
+    // head
+    ctx.beginPath();
+    ctx.arc(0, headY, headR, 0, Math.PI * 2);
+    ctx.fillStyle = skin;
+    ctx.fill();
+
+    // beard
+    ctx.beginPath();
+    ctx.arc(0, headY + 2, headR - 1, 0.05 * Math.PI, 0.95 * Math.PI);
+    ctx.lineTo(0, headY + headR + 2);
+    ctx.closePath();
+    ctx.fillStyle = hair;
+    ctx.fill();
+
+    // short dark hair on top
+    ctx.beginPath();
+    ctx.arc(0, headY - 1, headR + 1, Math.PI, Math.PI * 2);
+    ctx.fillStyle = hair;
+    ctx.fill();
+
+    // sunglasses
+    ctx.fillStyle = '#15161a';
+    roundRectPath(-headR + 2, headY - 3, headR * 2 - 4, 6, 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function loop() {
+    updatePhysics();
+    drawBackground();
+    drawPlatforms();
+    drawGems();
+    drawEnemies();
+    drawGoal();
+    drawPlayer();
+    requestAnimationFrame(loop);
+  }
+
+  updateGemUI();
+  startTimer();
+  startMusic();
+  showBanner('¡Solo salta! Un error y vuelves al principio.', 2500);
+  loop();
+})();
+</script>
+</body>
+</html>
